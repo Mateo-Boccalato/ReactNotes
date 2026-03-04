@@ -7,7 +7,6 @@ enum NoteFilter: Equatable {
     case recents
     case favorites
     case unfiled
-    case folder(String)
     case notebook(String)
 }
 
@@ -26,20 +25,17 @@ final class SidebarViewController: UIViewController {
     private let searchBar = UISearchBar()
     private let tableView = UITableView(frame: .zero, style: .grouped)
 
-    private var folders: [Folder] = []
-    private var notebooks: [String: [Notebook]] = [:]  // folderId -> notebooks
-    private var expandedFolderIds: Set<String> = []
+    private var notebooks: [Notebook] = []
     private var selectedFilter: NoteFilter = .all
 
     // Flattened row model
     private enum SidebarRow {
         case allNotes(count: Int)
         case gallery
-        case folder(Folder)
-        case notebook(Notebook, folderId: String)
+        case notebook(Notebook)
     }
     private var fixedRows: [SidebarRow] = []
-    private var folderRows: [SidebarRow] = []
+    private var notebookRows: [SidebarRow] = []
 
     private static let sidebarBackground = UIColor(red: 0.11, green: 0.11, blue: 0.118, alpha: 1)
     private static let selectedBackground = UIColor(white: 1, alpha: 0.1)
@@ -101,7 +97,6 @@ final class SidebarViewController: UIViewController {
         tableView.dataSource = self
         tableView.delegate = self
         tableView.register(SidebarCell.self, forCellReuseIdentifier: SidebarCell.reuseId)
-        tableView.register(SidebarNotebookCell.self, forCellReuseIdentifier: SidebarNotebookCell.reuseId)
         view.addSubview(tableView)
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
@@ -118,11 +113,7 @@ final class SidebarViewController: UIViewController {
     }
 
     private func reloadData() {
-        folders = dataStore.foldersSorted()
-        notebooks = [:]
-        for folder in folders {
-            notebooks[folder.id] = dataStore.notebooks(in: folder.id)
-        }
+        notebooks = dataStore.notebooksSorted()
         rebuildRows()
         tableView.reloadData()
     }
@@ -131,28 +122,19 @@ final class SidebarViewController: UIViewController {
         let totalNotes = dataStore.appData.notes.count
         fixedRows = [.allNotes(count: totalNotes), .gallery]
 
-        folderRows = []
-        for folder in folders {
-            folderRows.append(.folder(folder))
-            if expandedFolderIds.contains(folder.id) {
-                let nbs = notebooks[folder.id] ?? []
-                for nb in nbs {
-                    folderRows.append(.notebook(nb, folderId: folder.id))
-                }
-            }
-        }
+        notebookRows = notebooks.map { .notebook($0) }
     }
 
     // MARK: - Actions
 
-    @objc private func addFolder() {
-        let alert = UIAlertController(title: "New Subject", message: nil, preferredStyle: .alert)
-        alert.addTextField { $0.placeholder = "Subject name" }
+    @objc private func addNotebook() {
+        let alert = UIAlertController(title: "New Notebook", message: nil, preferredStyle: .alert)
+        alert.addTextField { $0.placeholder = "Notebook name" }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         alert.addAction(UIAlertAction(title: "Create", style: .default) { [weak self] _ in
             guard let self else { return }
             let name = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines)
-            _ = self.dataStore.createFolder(named: name?.isEmpty == false ? name! : "Untitled Subject")
+            _ = self.dataStore.createNotebook(title: name?.isEmpty == false ? name! : "Untitled Notebook")
         })
         present(alert, animated: true)
     }
@@ -163,14 +145,14 @@ final class SidebarViewController: UIViewController {
         tableView.reloadData()
     }
 
-    private func showFolderContextMenu(for folder: Folder, at indexPath: IndexPath) {
-        let alert = UIAlertController(title: folder.name, message: nil, preferredStyle: .actionSheet)
+    private func showNotebookContextMenu(for notebook: Notebook, at indexPath: IndexPath) {
+        let alert = UIAlertController(title: notebook.title, message: nil, preferredStyle: .actionSheet)
 
         alert.addAction(UIAlertAction(title: "Rename", style: .default) { [weak self] _ in
-            self?.presentRenameAlert(for: folder)
+            self?.presentRenameAlert(for: notebook)
         })
         alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
-            self?.dataStore.deleteFolder(id: folder.id)
+            self?.dataStore.deleteNotebook(id: notebook.id)
         })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
 
@@ -181,16 +163,16 @@ final class SidebarViewController: UIViewController {
         present(alert, animated: true)
     }
 
-    private func presentRenameAlert(for folder: Folder) {
-        let alert = UIAlertController(title: "Rename Subject", message: nil, preferredStyle: .alert)
+    private func presentRenameAlert(for notebook: Notebook) {
+        let alert = UIAlertController(title: "Rename Notebook", message: nil, preferredStyle: .alert)
         alert.addTextField { tf in
-            tf.text = folder.name
-            tf.placeholder = "Subject name"
+            tf.text = notebook.title
+            tf.placeholder = "Notebook name"
         }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         alert.addAction(UIAlertAction(title: "Rename", style: .default) { [weak self] _ in
             guard let name = alert.textFields?.first?.text, !name.isEmpty else { return }
-            self?.dataStore.updateFolder(id: folder.id, name: name)
+            self?.dataStore.updateNotebook(id: notebook.id, title: name)
         })
         present(alert, animated: true)
     }
@@ -202,11 +184,11 @@ extension SidebarViewController: UITableViewDataSource {
     func numberOfSections(in tableView: UITableView) -> Int { 2 }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        section == 0 ? fixedRows.count : folderRows.count
+        section == 0 ? fixedRows.count : notebookRows.count
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let row = indexPath.section == 0 ? fixedRows[indexPath.row] : folderRows[indexPath.row]
+        let row = indexPath.section == 0 ? fixedRows[indexPath.row] : notebookRows[indexPath.row]
         switch row {
         case .allNotes(let count):
             let cell = tableView.dequeueReusableCell(withIdentifier: SidebarCell.reuseId, for: indexPath) as! SidebarCell
@@ -230,24 +212,16 @@ extension SidebarViewController: UITableViewDataSource {
             )
             return cell
 
-        case .folder(let folder):
+        case .notebook(let nb):
             let cell = tableView.dequeueReusableCell(withIdentifier: SidebarCell.reuseId, for: indexPath) as! SidebarCell
-            let isExpanded = expandedFolderIds.contains(folder.id)
             cell.configure(
-                icon: nil,
-                title: folder.name,
+                icon: "book.closed",
+                title: nb.title,
                 badge: nil,
-                isSelected: selectedFilter == .folder(folder.id),
+                isSelected: selectedFilter == .notebook(nb.id),
                 indented: false,
-                folderColor: folder.color.flatMap { UIColor(hex: $0) } ?? .systemBlue,
-                showChevron: true,
-                chevronExpanded: isExpanded
+                folderColor: nb.color.flatMap { UIColor(hex: $0) }
             )
-            return cell
-
-        case .notebook(let nb, _):
-            let cell = tableView.dequeueReusableCell(withIdentifier: SidebarNotebookCell.reuseId, for: indexPath) as! SidebarNotebookCell
-            cell.configure(title: nb.title, isSelected: selectedFilter == .notebook(nb.id))
             return cell
         }
     }
@@ -258,7 +232,7 @@ extension SidebarViewController: UITableViewDataSource {
         header.backgroundColor = .clear
 
         let label = UILabel()
-        label.text = "SUBJECTS"
+        label.text = "NOTEBOOKS"
         label.font = .systemFont(ofSize: 11, weight: .semibold)
         label.textColor = .systemGray
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -266,7 +240,7 @@ extension SidebarViewController: UITableViewDataSource {
         let addButton = UIButton(type: .system)
         addButton.setImage(UIImage(systemName: "plus"), for: .normal)
         addButton.tintColor = .systemGray
-        addButton.addTarget(self, action: #selector(addFolder), for: .touchUpInside)
+        addButton.addTarget(self, action: #selector(addNotebook), for: .touchUpInside)
         addButton.translatesAutoresizingMaskIntoConstraints = false
 
         header.addSubview(label)
@@ -292,23 +266,14 @@ extension SidebarViewController: UITableViewDataSource {
 extension SidebarViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        let row = indexPath.section == 0 ? fixedRows[indexPath.row] : folderRows[indexPath.row]
+        let row = indexPath.section == 0 ? fixedRows[indexPath.row] : notebookRows[indexPath.row]
 
         switch row {
         case .allNotes:
             selectFilter(.all)
         case .gallery:
             break
-        case .folder(let folder):
-            if expandedFolderIds.contains(folder.id) {
-                expandedFolderIds.remove(folder.id)
-            } else {
-                expandedFolderIds.insert(folder.id)
-            }
-            selectFilter(.folder(folder.id))
-            rebuildRows()
-            tableView.reloadSections(IndexSet(integer: 1), with: .automatic)
-        case .notebook(let nb, _):
+        case .notebook(let nb):
             selectFilter(.notebook(nb.id))
         }
     }
@@ -323,18 +288,18 @@ extension SidebarViewController: UITableViewDelegate {
         point: CGPoint
     ) -> UIContextMenuConfiguration? {
         guard indexPath.section == 1 else { return nil }
-        let row = folderRows[indexPath.row]
-        guard case .folder(let folder) = row else { return nil }
+        let row = notebookRows[indexPath.row]
+        guard case .notebook(let notebook) = row else { return nil }
 
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
             guard let self else { return UIMenu(title: "", children: []) }
             let rename = UIAction(title: "Rename", image: UIImage(systemName: "pencil")) { [weak self] _ in
-                self?.presentRenameAlert(for: folder)
+                self?.presentRenameAlert(for: notebook)
             }
             let delete = UIAction(title: "Delete", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in
-                self?.dataStore.deleteFolder(id: folder.id)
+                self?.dataStore.deleteNotebook(id: notebook.id)
             }
-            return UIMenu(title: folder.name, children: [rename, delete])
+            return UIMenu(title: notebook.title, children: [rename, delete])
         }
     }
 }
@@ -464,31 +429,3 @@ final class SidebarCell: UITableViewCell {
     }
 }
 
-// MARK: - SidebarNotebookCell
-
-final class SidebarNotebookCell: UITableViewCell {
-    static let reuseId = "SidebarNotebookCell"
-    private let titleLabel = UILabel()
-
-    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
-        super.init(style: style, reuseIdentifier: reuseIdentifier)
-        backgroundColor = .clear
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.textColor = UIColor(white: 0.8, alpha: 1)
-        titleLabel.font = .systemFont(ofSize: 14)
-        contentView.addSubview(titleLabel)
-        NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 44),
-            titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16)
-        ])
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    func configure(title: String, isSelected: Bool) {
-        titleLabel.text = title
-        titleLabel.font = isSelected ? .systemFont(ofSize: 14, weight: .semibold) : .systemFont(ofSize: 14)
-        backgroundColor = isSelected ? UIColor(white: 1, alpha: 0.08) : .clear
-    }
-}

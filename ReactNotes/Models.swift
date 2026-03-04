@@ -1,19 +1,12 @@
 import Foundation
 
-struct Folder: Codable, Equatable {
-    let id: String
-    var name: String
-    var parentFolderId: String?
-    var order: Int
-    var color: String?
-}
-
 struct Notebook: Codable, Equatable {
     let id: String
     var title: String
-    var folderId: String
     var createdAt: String
     var updatedAt: String
+    var color: String?
+    var order: Int
 }
 
 struct Note: Codable, Equatable {
@@ -65,34 +58,25 @@ struct Note: Codable, Equatable {
 
 struct AppData: Codable, Equatable {
     var schemaVersion: Int
-    var folders: [Folder]
     var notebooks: [Notebook]
     var notes: [Note]
 }
 
 enum AppDataFactory {
-    static let schemaVersion = 2
+    static let schemaVersion = 3
 
     static func makeDefault() -> AppData {
         let timestamp = isoNow()
-        let folderId = UUID().uuidString
         let notebookId = UUID().uuidString
         let noteId = UUID().uuidString
-
-        let defaultFolder = Folder(
-            id: folderId,
-            name: "My Folder",
-            parentFolderId: nil,
-            order: 0,
-            color: nil
-        )
 
         let defaultNotebook = Notebook(
             id: notebookId,
             title: "Organic Chemistry Notes",
-            folderId: folderId,
             createdAt: timestamp,
-            updatedAt: timestamp
+            updatedAt: timestamp,
+            color: nil,
+            order: 0
         )
 
         let defaultNote = Note(
@@ -106,7 +90,6 @@ enum AppDataFactory {
 
         return AppData(
             schemaVersion: schemaVersion,
-            folders: [defaultFolder],
             notebooks: [defaultNotebook],
             notes: [defaultNote]
         )

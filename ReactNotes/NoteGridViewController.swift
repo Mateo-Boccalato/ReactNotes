@@ -25,7 +25,7 @@ final class NoteGridViewController: UIViewController {
         print("📱 NoteGridViewController viewDidLoad starting...")
         
         super.viewDidLoad()
-        view.backgroundColor = UIColor(red: 0.95, green: 0.95, blue: 0.97, alpha: 1)
+        view.backgroundColor = UIColor(red: 0.11, green: 0.11, blue: 0.118, alpha: 1)
         configureNavigation()
         configureFilterControl()
         configureCollectionView()
@@ -155,9 +155,6 @@ final class NoteGridViewController: UIViewController {
         case .all:
             allNotes = dataStore.allNotesSorted()
             title = "Notes"
-        case .folder(let id):
-            allNotes = dataStore.notes(inFolder: id)
-            title = dataStore.appData.folders.first(where: { $0.id == id })?.name ?? "Notes"
         case .notebook(let id):
             allNotes = dataStore.notes(in: id)
             title = dataStore.appData.notebooks.first(where: { $0.id == id })?.title ?? "Notes"
@@ -208,13 +205,6 @@ final class NoteGridViewController: UIViewController {
         switch filter {
         case .notebook(let id):
             notebookId = id
-        case .folder(let folderId):
-            if let nb = dataStore.notebooks(in: folderId).first {
-                notebookId = nb.id
-            } else {
-                let nb = dataStore.createNotebook(in: folderId)
-                notebookId = nb.id
-            }
         default:
             if let nb = dataStore.appData.notebooks.first {
                 notebookId = nb.id
@@ -240,6 +230,11 @@ extension NoteGridViewController: SidebarDelegate {
         activeTab = 0
         filterControl.selectedSegmentIndex = 0
         reloadData()
+        
+        // Pop back to the grid if we're currently viewing a note
+        if navigationController?.viewControllers.count ?? 0 > 1 {
+            navigationController?.popToRootViewController(animated: true)
+        }
     }
 }
 

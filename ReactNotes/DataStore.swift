@@ -61,7 +61,7 @@ final class DataStore {
             let decodeStart = CFAbsoluteTimeGetCurrent()
             var decoded = try decoder.decode(AppData.self, from: data)
             print("⏱️ DataStore: Decoded JSON (\(CFAbsoluteTimeGetCurrent() - decodeStart)s)")
-            print("   - \(decoded.folders.count) folders, \(decoded.notebooks.count) notebooks, \(decoded.notes.count) notes")
+            print("   - \(decoded.notebooks.count) notebooks, \(decoded.notes.count) notes")
             
             if decoded.schemaVersion < AppDataFactory.schemaVersion {
                 decoded = AppDataFactory.migrate(decoded)
@@ -128,14 +128,8 @@ final class DataStore {
         AppDataFactory.isoNow()
     }
 
-    func foldersSorted() -> [Folder] {
-        appData.folders.sorted { $0.order < $1.order }
-    }
-
-    func notebooks(in folderId: String) -> [Notebook] {
-        appData.notebooks
-            .filter { $0.folderId == folderId }
-            .sorted { $0.updatedAt > $1.updatedAt }
+    func notebooksSorted() -> [Notebook] {
+        appData.notebooks.sorted { $0.order < $1.order }
     }
 
     func notes(in notebookId: String) -> [Note] {
@@ -148,70 +142,40 @@ final class DataStore {
         appData.notes.sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    func notes(inFolder folderId: String) -> [Note] {
-        let notebookIds = Set(appData.notebooks.filter { $0.folderId == folderId }.map(\.id))
-        return appData.notes
-            .filter { notebookIds.contains($0.notebookId) }
-            .sorted { $0.updatedAt > $1.updatedAt }
-    }
-
-    // MARK: - Folder CRUD
-
-    @discardableResult
-    func createFolder(named name: String, color: String? = nil) -> Folder {
-        let folder = Folder(
-            id: UUID().uuidString,
-            name: name.isEmpty ? "Untitled Folder" : name,
-            parentFolderId: nil,
-            order: appData.folders.count,
-            color: color
-        )
-        appData.folders.append(folder)
-        scheduleSaveAndNotify()
-        return folder
-    }
-
-    func updateFolder(id: String, name: String? = nil, color: String? = nil) {
-        guard let index = appData.folders.firstIndex(where: { $0.id == id }) else { return }
-        if let name { appData.folders[index].name = name }
-        if let color { appData.folders[index].color = color }
-        scheduleSaveAndNotify()
-    }
-
-    func deleteFolder(id: String) {
-        let notebookIds = appData.notebooks.filter { $0.folderId == id }.map(\.id)
-        appData.notes.removeAll { notebookIds.contains($0.notebookId) }
-        appData.notebooks.removeAll { $0.folderId == id }
-        appData.folders.removeAll { $0.id == id }
-        if appData.folders.isEmpty {
-            _ = createFolder(named: "My Folder")
-        } else {
-            scheduleSaveAndNotify()
-        }
-    }
-
     // MARK: - Notebook CRUD
 
     @discardableResult
-    func createNotebook(in folderId: String, title: String = "Untitled Notebook") -> Notebook {
+    func createNotebook(title: String = "Untitled Notebook", color: String? = nil) -> Notebook {
         let timestamp = nowISO()
         let notebook = Notebook(
             id: UUID().uuidString,
             title: title,
-            folderId: folderId,
             createdAt: timestamp,
-            updatedAt: timestamp
+            updatedAt: timestamp,
+            color: color,
+            order: appData.notebooks.count
         )
         appData.notebooks.append(notebook)
-        _ = createNote(in: notebook.id, title: "New Note")
         scheduleSaveAndNotify()
         return notebook
+    }
+
+    func updateNotebook(id: String, title: String? = nil, color: String? = nil) {
+        guard let index = appData.notebooks.firstIndex(where: { $0.id == id }) else { return }
+        if let title { appData.notebooks[index].title = title }
+        if let color { appData.notebooks[index].color = color }
+        appData.notebooks[index].updatedAt = nowISO()
+        scheduleSaveAndNotify()
     }
 
     func deleteNotebook(id: String) {
         appData.notes.removeAll { $0.notebookId == id }
         appData.notebooks.removeAll { $0.id == id }
-        scheduleSaveAndNotify()
+        if appData.notebooks.isEmpty {
+            _ = createNotebook(title: "My Notebook")
+        } else {
+            scheduleSaveAndNotify()
+        }
     }
 
     // MARK: - Note CRUD
