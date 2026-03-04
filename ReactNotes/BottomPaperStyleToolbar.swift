@@ -28,6 +28,7 @@ enum PaperStyle: CaseIterable {
 
 protocol BottomPaperStyleToolbarDelegate: AnyObject {
     func toolbar(_ toolbar: BottomPaperStyleToolbar, didSelectStyle style: PaperStyle)
+    func toolbarDidTapAddPhoto(_ toolbar: BottomPaperStyleToolbar)
 }
 
 // MARK: - BottomPaperStyleToolbar
@@ -35,9 +36,8 @@ protocol BottomPaperStyleToolbarDelegate: AnyObject {
 final class BottomPaperStyleToolbar: UIView {
     weak var delegate: BottomPaperStyleToolbarDelegate?
     private(set) var selectedStyle: PaperStyle = .lined
-
-    private let stackView = UIStackView()
-    private var styleButtons: [PaperStyle: UIButton] = [:]
+    
+    private var backgroundButton: UIButton!
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -61,84 +61,74 @@ final class BottomPaperStyleToolbar: UIView {
             border.heightAnchor.constraint(equalToConstant: 0.5)
         ])
 
-        // Create left stack for paper styles (equal distribution)
-        let leftStack = UIStackView()
-        leftStack.translatesAutoresizingMaskIntoConstraints = false
-        leftStack.axis = .horizontal
-        leftStack.spacing = 0
-        leftStack.distribution = .fillEqually
-        leftStack.alignment = .center
+        // Create horizontal stack for all buttons
+        let mainStack = UIStackView()
+        mainStack.translatesAutoresizingMaskIntoConstraints = false
+        mainStack.axis = .horizontal
+        mainStack.spacing = 12
+        mainStack.distribution = .fillEqually
+        mainStack.alignment = .center
+
+        addSubview(mainStack)
+
+        // Create background selector button with menu
+        backgroundButton = makeBackgroundButton()
         
-        // Create right stack for utility buttons (equal distribution)
-        let rightStack = UIStackView()
-        rightStack.translatesAutoresizingMaskIntoConstraints = false
-        rightStack.axis = .horizontal
-        rightStack.spacing = 0
-        rightStack.distribution = .fillEqually
-        rightStack.alignment = .center
-
-        addSubview(leftStack)
-        addSubview(rightStack)
-
-        // Add paper style buttons to left stack
-        for style in PaperStyle.allCases {
-            let btn = makeButton(for: style)
-            styleButtons[style] = btn
-            leftStack.addArrangedSubview(btn)
-        }
-
-        // Add separator (not in any stack, positioned independently)
-        let separator = UIView()
-        separator.translatesAutoresizingMaskIntoConstraints = false
-        separator.backgroundColor = UIColor.systemGray4
-        addSubview(separator)
-
-        // Add utility buttons to right stack
-        let importBtn = makeUtilityButton(symbol: "arrow.up.doc", title: "Import")
-        let scanBtn = makeUtilityButton(symbol: "doc.text.viewfinder", title: "Scan")
-        rightStack.addArrangedSubview(importBtn)
-        rightStack.addArrangedSubview(scanBtn)
+        // Create add photo button
+        let photoBtn = makeUtilityButton(symbol: "photo.on.rectangle.angled", title: "Add Photo")
+        photoBtn.addTarget(self, action: #selector(addPhotoTapped), for: .touchUpInside)
+        
+        mainStack.addArrangedSubview(backgroundButton)
+        mainStack.addArrangedSubview(photoBtn)
 
         NSLayoutConstraint.activate([
-            // Left stack
-            leftStack.topAnchor.constraint(equalTo: topAnchor),
-            leftStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            leftStack.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor),
-            
-            // Separator
-            separator.leadingAnchor.constraint(equalTo: leftStack.trailingAnchor, constant: 8),
-            separator.centerYAnchor.constraint(equalTo: centerYAnchor),
-            separator.widthAnchor.constraint(equalToConstant: 0.5),
-            separator.heightAnchor.constraint(equalToConstant: 24),
-            
-            // Right stack
-            rightStack.topAnchor.constraint(equalTo: topAnchor),
-            rightStack.leadingAnchor.constraint(equalTo: separator.trailingAnchor, constant: 8),
-            rightStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            rightStack.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor),
-            
-            // Make left and right stacks equal width
-            leftStack.widthAnchor.constraint(equalTo: rightStack.widthAnchor, multiplier: 2.0)
+            mainStack.topAnchor.constraint(equalTo: topAnchor),
+            mainStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            mainStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            mainStack.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor)
         ])
 
         selectStyle(.lined)
     }
+    
+    @objc private func addPhotoTapped() {
+        delegate?.toolbarDidTapAddPhoto(self)
+    }
 
-    private func makeButton(for style: PaperStyle) -> UIButton {
+    private func makeBackgroundButton() -> UIButton {
         var config = UIButton.Configuration.plain()
-        config.image = UIImage(systemName: style.sfSymbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 14))
-        config.title = style.label
+        config.image = UIImage(systemName: selectedStyle.sfSymbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 14))
+        config.title = "Background"
         config.imagePadding = 4
         config.imagePlacement = .top
-        config.baseForegroundColor = .secondaryLabel
-        config.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)
+        config.baseForegroundColor = .systemBlue
+        config.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8)
 
         let btn = UIButton(configuration: config)
         btn.translatesAutoresizingMaskIntoConstraints = false
-        btn.tag = PaperStyle.allCases.firstIndex(of: style)!
-        btn.addTarget(self, action: #selector(styleTapped(_:)), for: .touchUpInside)
         btn.titleLabel?.font = .systemFont(ofSize: 10)
+        btn.showsMenuAsPrimaryAction = true
+        btn.menu = createBackgroundMenu()
+        
         return btn
+    }
+    
+    private func createBackgroundMenu() -> UIMenu {
+        var actions: [UIAction] = []
+        
+        for style in PaperStyle.allCases {
+            let action = UIAction(
+                title: style.label,
+                image: UIImage(systemName: style.sfSymbol),
+                state: style == selectedStyle ? .on : .off
+            ) { [weak self] _ in
+                self?.selectStyle(style)
+                self?.delegate?.toolbar(self!, didSelectStyle: style)
+            }
+            actions.append(action)
+        }
+        
+        return UIMenu(title: "Paper Style", children: actions)
     }
 
     private func makeUtilityButton(symbol: String, title: String) -> UIButton {
@@ -156,20 +146,16 @@ final class BottomPaperStyleToolbar: UIView {
         return btn
     }
 
-    @objc private func styleTapped(_ sender: UIButton) {
-        guard sender.tag < PaperStyle.allCases.count else { return }
-        let style = PaperStyle.allCases[sender.tag]
-        selectStyle(style)
-        delegate?.toolbar(self, didSelectStyle: style)
-    }
-
     func selectStyle(_ style: PaperStyle) {
         selectedStyle = style
-        for (s, btn) in styleButtons {
-            var config = btn.configuration
-            config?.baseForegroundColor = s == style ? .systemBlue : .secondaryLabel
-            btn.configuration = config
-        }
+        
+        // Update button icon to match selected style
+        var config = backgroundButton.configuration
+        config?.image = UIImage(systemName: style.sfSymbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 14))
+        backgroundButton.configuration = config
+        
+        // Recreate menu with updated selection state
+        backgroundButton.menu = createBackgroundMenu()
     }
 }
 

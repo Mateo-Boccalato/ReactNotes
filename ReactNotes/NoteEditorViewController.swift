@@ -1,5 +1,6 @@
 import UIKit
 import PencilKit
+import PhotosUI
 
 // MARK: - EditorMode
 
@@ -17,8 +18,11 @@ final class NoteEditorViewController: UIViewController {
 
     // MARK: UI
 
+    private let scrollView = UIScrollView()  // Container for zoom functionality
+    private let zoomableContentView = UIView()  // Container that holds everything that should zoom
     private let patternBackground = PatternBackgroundView()
     private let canvasView = PKCanvasView()
+    private let pageSeparatorContainer = UIView()  // Container for separators
     private let textView = UITextView()
     private let floatingToolbar = FloatingToolbarView()
     private let bottomToolbar = BottomPaperStyleToolbar()
@@ -28,12 +32,14 @@ final class NoteEditorViewController: UIViewController {
     private var floatingToolbarTrailingConstraint: NSLayoutConstraint!
     private var bottomToolbarBottomConstraint: NSLayoutConstraint!
     private var textViewHeightConstraint: NSLayoutConstraint!
+    private var contentViewWidthConstraint: NSLayoutConstraint!
+    private var contentViewHeightConstraint: NSLayoutConstraint!
 
     // State
     private var mode: EditorMode = .drawing
     private var numberOfPages: Int = 1
     private var pageSeparatorViews: [UIView] = []
-    private var pageSeparatorContainer: UIView!  // Container for separators that moves with scroll
+    private var photoImageViews: [DraggableImageView] = []  // Track added photos
 
     // Debounce
     private var canvasSaveWorkItem: DispatchWorkItem?
@@ -67,8 +73,9 @@ final class NoteEditorViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .white
+        view.backgroundColor = .black  // Black background to show page boundaries clearly
         configureNavigation()
+        configureScrollView()  // New: set up scroll view for zooming
         configureBackground()
         configureCanvas()
         configureTextView()
@@ -158,19 +165,65 @@ final class NoteEditorViewController: UIViewController {
         )
         navigationItem.rightBarButtonItems = [moreBtn, redoBtn, undoBtn]
     }
+    
+    private func configureScrollView() {
+        // Set up scroll view for zooming with black background
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.delegate = self
+        scrollView.minimumZoomScale = 0.5  // Can zoom out to 50%
+        scrollView.maximumZoomScale = 3.0  // Can zoom in to 300%
+        scrollView.bouncesZoom = true
+        scrollView.showsHorizontalScrollIndicator = true
+        scrollView.showsVerticalScrollIndicator = true
+        scrollView.backgroundColor = .black  // Black background to show page boundaries
+        
+        view.addSubview(scrollView)
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+        ])
+        
+        // Set up zoomable content view
+        zoomableContentView.translatesAutoresizingMaskIntoConstraints = false
+        zoomableContentView.backgroundColor = .white
+        
+        // Add shadow to make the page stand out against black background
+        zoomableContentView.layer.shadowColor = UIColor.black.cgColor
+        zoomableContentView.layer.shadowOpacity = 0.5
+        zoomableContentView.layer.shadowOffset = CGSize(width: 0, height: 2)
+        zoomableContentView.layer.shadowRadius = 8
+        
+        scrollView.addSubview(zoomableContentView)
+        
+        // Size the content view to match the page dimensions
+        contentViewWidthConstraint = zoomableContentView.widthAnchor.constraint(equalToConstant: pageWidth)
+        contentViewHeightConstraint = zoomableContentView.heightAnchor.constraint(equalToConstant: pageHeight)
+        
+        NSLayoutConstraint.activate([
+            zoomableContentView.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            zoomableContentView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            zoomableContentView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            zoomableContentView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+            contentViewWidthConstraint,
+            contentViewHeightConstraint
+        ])
+    }
 
     private func configureBackground() {
         patternBackground.translatesAutoresizingMaskIntoConstraints = false
         patternBackground.style = .lined
         patternBackground.isUserInteractionEnabled = false
-        // Add to main view, behind the canvas
-        view.insertSubview(patternBackground, at: 0)
+        
+        // Add pattern as a subview of the zoomable content
+        zoomableContentView.addSubview(patternBackground)
         
         NSLayoutConstraint.activate([
-            patternBackground.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            patternBackground.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-            patternBackground.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-            patternBackground.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+            patternBackground.topAnchor.constraint(equalTo: zoomableContentView.topAnchor),
+            patternBackground.leadingAnchor.constraint(equalTo: zoomableContentView.leadingAnchor),
+            patternBackground.trailingAnchor.constraint(equalTo: zoomableContentView.trailingAnchor),
+            patternBackground.bottomAnchor.constraint(equalTo: zoomableContentView.bottomAnchor)
         ])
     }
 
@@ -178,48 +231,49 @@ final class NoteEditorViewController: UIViewController {
         canvasView.translatesAutoresizingMaskIntoConstraints = false
         canvasView.backgroundColor = .clear
         canvasView.drawingPolicy = .anyInput
-        canvasView.alwaysBounceVertical = true
         canvasView.delegate = self
         canvasView.isOpaque = false
         
-        // Enable zooming
-        canvasView.minimumZoomScale = 0.5  // Can zoom out to 50%
-        canvasView.maximumZoomScale = 3.0  // Can zoom in to 300%
-        canvasView.bouncesZoom = true
-        
-        // Start with one page worth of content
-        canvasView.contentSize = CGSize(width: view.bounds.width, height: pageHeight)
+        // Disable canvas's own scrolling - the parent scrollView handles it
+        canvasView.isScrollEnabled = false
         
         // Set a default tool to ensure drawing works immediately
         let defaultTool = PKInkingTool(.pen, color: .black, width: 3)
         canvasView.tool = defaultTool
         
-        view.addSubview(canvasView)
+        // Add canvas to the zoomable content view
+        zoomableContentView.addSubview(canvasView)
         NSLayoutConstraint.activate([
-            canvasView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            canvasView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-            canvasView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-            canvasView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+            canvasView.topAnchor.constraint(equalTo: zoomableContentView.topAnchor),
+            canvasView.leadingAnchor.constraint(equalTo: zoomableContentView.leadingAnchor),
+            canvasView.trailingAnchor.constraint(equalTo: zoomableContentView.trailingAnchor),
+            canvasView.bottomAnchor.constraint(equalTo: zoomableContentView.bottomAnchor)
         ])
         
-        // Create container for page separators (sits between background and canvas)
-        pageSeparatorContainer = UIView()
+        // Create container for page separators
         pageSeparatorContainer.translatesAutoresizingMaskIntoConstraints = false
         pageSeparatorContainer.isUserInteractionEnabled = false
         pageSeparatorContainer.backgroundColor = .clear
-        view.insertSubview(pageSeparatorContainer, aboveSubview: patternBackground)
+        
+        // Add separator container to zoomable content (between pattern and canvas)
+        zoomableContentView.insertSubview(pageSeparatorContainer, aboveSubview: patternBackground)
         
         NSLayoutConstraint.activate([
-            pageSeparatorContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            pageSeparatorContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-            pageSeparatorContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-            pageSeparatorContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+            pageSeparatorContainer.topAnchor.constraint(equalTo: zoomableContentView.topAnchor),
+            pageSeparatorContainer.leadingAnchor.constraint(equalTo: zoomableContentView.leadingAnchor),
+            pageSeparatorContainer.trailingAnchor.constraint(equalTo: zoomableContentView.trailingAnchor),
+            pageSeparatorContainer.bottomAnchor.constraint(equalTo: zoomableContentView.bottomAnchor)
         ])
     }
     
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        // Pattern background is now a sibling view, no need to add it here
+        // Update content view width to match scroll view if needed
+        if contentViewWidthConstraint.constant != scrollView.bounds.width {
+            contentViewWidthConstraint.constant = max(pageWidth, scrollView.bounds.width)
+        }
+        // Center the content after layout changes
+        centerContentInScrollView()
     }
     
     private func updateDrawingPolicy() {
@@ -241,12 +295,9 @@ final class NoteEditorViewController: UIViewController {
     }
     
     private func addPages(from: Int, to: Int) {
-        // Update canvas content size
+        // Update the content view height to accommodate new pages
         let newHeight = pageHeight * CGFloat(to)
-        canvasView.contentSize.height = newHeight
-        
-        // Pattern background is now a sibling view and doesn't need resizing
-        // It will be updated via transform on scroll
+        contentViewHeightConstraint.constant = newHeight
         
         // Add visual page separators
         addPageSeparators(from: from, to: to)
@@ -259,7 +310,7 @@ final class NoteEditorViewController: UIViewController {
             separator.frame = CGRect(
                 x: 0,
                 y: yPosition - 1, // Place at top of new page
-                width: view.bounds.width,
+                width: pageWidth,  // Use pageWidth instead of view.bounds.width
                 height: 2
             )
             pageSeparatorContainer.addSubview(separator)
@@ -274,8 +325,7 @@ final class NoteEditorViewController: UIViewController {
     }
     
     private func updatePatternBackgroundSize() {
-        patternBackground.frame.size = canvasView.contentSize
-        patternBackground.setNeedsDisplay()
+        // Pattern background now sizes itself via constraints, no manual update needed
     }
 
     private func configureTextView() {
@@ -331,35 +381,36 @@ final class NoteEditorViewController: UIViewController {
     }
     
     private func configureGestures() {
-        // Add double-tap gesture to reset zoom
+        // Add double-tap gesture for quick zoom
         let doubleTap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
         doubleTap.numberOfTapsRequired = 2
-        canvasView.addGestureRecognizer(doubleTap)
-    }
-    
-    private func configureKeyCommands() {
-        // Keyboard commands can be added here if needed
+        scrollView.addGestureRecognizer(doubleTap)
     }
     
     @objc private func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
-        if canvasView.zoomScale != 1.0 {
+        if scrollView.zoomScale != 1.0 {
             // Reset to normal zoom
-            canvasView.setZoomScale(1.0, animated: true)
+            scrollView.setZoomScale(1.0, animated: true)
         } else {
             // Zoom in to 2x at the tap location
-            let tapPoint = gesture.location(in: canvasView)
+            let tapPoint = gesture.location(in: zoomableContentView)
             let zoomRect = zoomRect(for: 2.0, center: tapPoint)
-            canvasView.zoom(to: zoomRect, animated: true)
+            scrollView.zoom(to: zoomRect, animated: true)
         }
     }
     
     private func zoomRect(for scale: CGFloat, center: CGPoint) -> CGRect {
         var zoomRect = CGRect.zero
-        zoomRect.size.width = canvasView.bounds.width / scale
-        zoomRect.size.height = canvasView.bounds.height / scale
+        let scrollViewSize = scrollView.bounds.size
+        zoomRect.size.width = scrollViewSize.width / scale
+        zoomRect.size.height = scrollViewSize.height / scale
         zoomRect.origin.x = center.x - (zoomRect.width / 2.0)
         zoomRect.origin.y = center.y - (zoomRect.height / 2.0)
         return zoomRect
+    }
+    
+    private func configureKeyCommands() {
+        // Keyboard commands can be added here if needed
     }
 
     // MARK: - Data
@@ -591,28 +642,73 @@ extension NoteEditorViewController: PKCanvasViewDelegate {
         }
     }
     
-    // Handle scroll events to sync pattern background
-    func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        updatePatternBackgroundTransform()
+    // MARK: - Zoom Support
+    
+    // Return the view that should be zoomed
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+        return zoomableContentView
     }
     
-    // Handle zoom events
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        // Check if we need to add more pages as user scrolls
+        checkAndExpandPages()
+    }
+    
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
-        updatePatternBackgroundTransform()
+        // Center the content when zoomed
+        centerContentInScrollView()
+        print("🔍 Current zoom scale: \(scrollView.zoomScale)")
     }
     
     func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
-        // Optional: Log zoom level for debugging
-        print("🔍 Zoom scale: \(scale)")
+        // Called when zoom completes
+        print("🔍 Final zoom scale: \(scale)")
     }
     
-    private func updatePatternBackgroundTransform() {
-        // Move the pattern background and separators to match the canvas scroll offset
-        // but without applying zoom scale (so pattern and separators stay at fixed size)
-        let offset = canvasView.contentOffset
-        let transform = CGAffineTransform(translationX: -offset.x, y: -offset.y)
-        patternBackground.transform = transform
-        pageSeparatorContainer.transform = transform
+    private func centerContentInScrollView() {
+        let scrollViewSize = scrollView.bounds.size
+        let contentSize = zoomableContentView.frame.size
+        
+        // Calculate horizontal centering
+        let horizontalInset: CGFloat
+        if contentSize.width < scrollViewSize.width {
+            horizontalInset = (scrollViewSize.width - contentSize.width) / 2
+        } else {
+            horizontalInset = 0
+        }
+        
+        // Calculate vertical centering
+        let verticalInset: CGFloat
+        if contentSize.height < scrollViewSize.height {
+            verticalInset = (scrollViewSize.height - contentSize.height) / 2
+        } else {
+            verticalInset = 0
+        }
+        
+        // Apply insets to center the content
+        scrollView.contentInset = UIEdgeInsets(
+            top: verticalInset,
+            left: horizontalInset,
+            bottom: verticalInset,
+            right: horizontalInset
+        )
+    }
+    
+    // Check if user is near bottom and add new page if needed
+    private func checkAndExpandPages() {
+        let scrollOffset = scrollView.contentOffset.y
+        let scrollViewHeight = scrollView.bounds.height
+        let contentHeight = contentViewHeightConstraint.constant
+        
+        // Trigger when user scrolls to within 300 points of the bottom
+        let threshold: CGFloat = 300
+        if scrollOffset + scrollViewHeight >= contentHeight - threshold {
+            // Add a new page
+            let newPageCount = numberOfPages + 1
+            addPages(from: numberOfPages, to: newPageCount)
+            numberOfPages = newPageCount
+            print("📄 Added page \(newPageCount), total pages: \(numberOfPages)")
+        }
     }
 }
 
@@ -653,4 +749,194 @@ extension NoteEditorViewController: BottomPaperStyleToolbarDelegate {
     func toolbar(_ toolbar: BottomPaperStyleToolbar, didSelectStyle style: PaperStyle) {
         patternBackground.style = style
     }
+    
+    func toolbarDidTapAddPhoto(_ toolbar: BottomPaperStyleToolbar) {
+        presentPhotoPicker()
+    }
+    
+    private func presentPhotoPicker() {
+        var configuration = PHPickerConfiguration()
+        configuration.filter = .images
+        configuration.selectionLimit = 1
+        
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = self
+        present(picker, animated: true)
+    }
 }
+// MARK: - PHPickerViewControllerDelegate
+
+extension NoteEditorViewController: PHPickerViewControllerDelegate {
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        
+        guard let result = results.first else { return }
+        
+        result.itemProvider.loadObject(ofClass: UIImage.self) { [weak self] object, error in
+            guard let self = self, let image = object as? UIImage else { return }
+            
+            DispatchQueue.main.async {
+                self.addDraggableImage(image)
+            }
+        }
+    }
+    
+    private func addDraggableImage(_ image: UIImage) {
+        // Create draggable image view
+        let imageView = DraggableImageView(image: image)
+        
+        // Add to zoomable content view (on top of canvas) - but don't use auto layout
+        imageView.translatesAutoresizingMaskIntoConstraints = true
+        zoomableContentView.addSubview(imageView)
+        
+        // Position in center of visible content area (accounting for scroll offset)
+        let contentOffset = scrollView.contentOffset
+        let visibleWidth = scrollView.bounds.width
+        let visibleHeight = scrollView.bounds.height
+        
+        // Account for current zoom scale
+        let currentScale = scrollView.zoomScale
+        
+        // Center in the visible area (in content coordinates)
+        let centerX = (contentOffset.x + visibleWidth / 2) / currentScale
+        let centerY = (contentOffset.y + visibleHeight / 2) / currentScale
+        
+        // Size the image (max 300x300, maintaining aspect ratio)
+        let maxSize: CGFloat = 300
+        let scale = min(maxSize / image.size.width, maxSize / image.size.height, 1.0)
+        let width = image.size.width * scale
+        let height = image.size.height * scale
+        
+        imageView.frame = CGRect(
+            x: centerX - width / 2,
+            y: centerY - height / 2,
+            width: width,
+            height: height
+        )
+        
+        photoImageViews.append(imageView)
+        
+        print("📸 Image added at frame: \(imageView.frame)")
+        print("   - Scroll offset: \(contentOffset)")
+        print("   - Zoom scale: \(currentScale)")
+    }
+}
+
+// MARK: - DraggableImageView
+
+final class DraggableImageView: UIImageView {
+    private var panGesture: UIPanGestureRecognizer!
+    private var pinchGesture: UIPinchGestureRecognizer!
+    private var rotationGesture: UIRotationGestureRecognizer!
+    
+    override init(image: UIImage?) {
+        super.init(image: image)
+        setup()
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setup()
+    }
+    
+    private func setup() {
+        isUserInteractionEnabled = true
+        contentMode = .scaleAspectFit
+        
+        // Add border to make it clear it's selected/draggable
+        layer.borderColor = UIColor.systemBlue.cgColor
+        layer.borderWidth = 2
+        layer.cornerRadius = 4
+        clipsToBounds = true
+        
+        // Add gestures
+        panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        panGesture.minimumNumberOfTouches = 1
+        panGesture.maximumNumberOfTouches = 1
+        addGestureRecognizer(panGesture)
+        
+        pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        addGestureRecognizer(pinchGesture)
+        
+        rotationGesture = UIRotationGestureRecognizer(target: self, action: #selector(handleRotation(_:)))
+        addGestureRecognizer(rotationGesture)
+        
+        // Add long press gesture to delete
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        addGestureRecognizer(longPress)
+        
+        // Enable simultaneous gestures for pinch and rotate
+        pinchGesture.delegate = self
+        rotationGesture.delegate = self
+    }
+    
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        guard let superview = superview else { return }
+        let translation = gesture.translation(in: superview)
+        center = CGPoint(x: center.x + translation.x, y: center.y + translation.y)
+        gesture.setTranslation(.zero, in: superview)
+        
+        if gesture.state == .ended {
+            print("📸 Image moved to: \(frame)")
+        }
+    }
+    
+    @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+        if gesture.state == .began || gesture.state == .changed {
+            transform = transform.scaledBy(x: gesture.scale, y: gesture.scale)
+            gesture.scale = 1.0
+        }
+    }
+    
+    @objc private func handleRotation(_ gesture: UIRotationGestureRecognizer) {
+        if gesture.state == .began || gesture.state == .changed {
+            transform = transform.rotated(by: gesture.rotation)
+            gesture.rotation = 0
+        }
+    }
+    
+    @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+        if gesture.state == .began {
+            // Show delete option
+            let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+            alert.addAction(UIAlertAction(title: "Delete Photo", style: .destructive) { [weak self] _ in
+                self?.removeFromSuperview()
+            })
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            
+            // Find the view controller
+            var responder: UIResponder? = self
+            while responder != nil {
+                responder = responder?.next
+                if let viewController = responder as? UIViewController {
+                    if let popover = alert.popoverPresentationController {
+                        popover.sourceView = self
+                        popover.sourceRect = self.bounds
+                    }
+                    viewController.present(alert, animated: true)
+                    break
+                }
+            }
+        }
+    }
+    
+    // Override point(inside:with:) to only respond to touches on opaque pixels
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        // Always respond if we have gestures active
+        return super.point(inside: point, with: event)
+    }
+}
+
+// MARK: - UIGestureRecognizerDelegate
+extension DraggableImageView: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Allow pinch and rotation to work together
+        if (gestureRecognizer == pinchGesture && otherGestureRecognizer == rotationGesture) ||
+           (gestureRecognizer == rotationGesture && otherGestureRecognizer == pinchGesture) {
+            return true
+        }
+        return false
+    }
+}
+
+

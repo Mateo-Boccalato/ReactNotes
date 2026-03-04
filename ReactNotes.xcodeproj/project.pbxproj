@@ -51,6 +51,14 @@
 		31A94F912F58AEDD0013F1AF /* ZOOM_FEATURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ZOOM_FEATURE.md; sourceTree = "<group>"; };
 		31A94F932F58AFA70013F1AF /* SIDEBAR_TOGGLE_FEATURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = SIDEBAR_TOGGLE_FEATURE.md; sourceTree = "<group>"; };
 		31A94F952F58B0640013F1AF /* PATTERN_ZOOM_FIX.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PATTERN_ZOOM_FIX.md; sourceTree = "<group>"; };
+		31A94F972F58C2A90013F1AF /* ZOOM_ISSUE_FIX.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ZOOM_ISSUE_FIX.md; sourceTree = "<group>"; };
+		31A94F982F58C41A0013F1AF /* PROPER_ZOOM_IMPLEMENTATION.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PROPER_ZOOM_IMPLEMENTATION.md; sourceTree = "<group>"; };
+		31A94F992F58C4410013F1AF /* ZOOM_FIX_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ZOOM_FIX_SUMMARY.md; sourceTree = "<group>"; };
+		31A94F9A2F58C4760013F1AF /* ZOOM_VISUAL_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ZOOM_VISUAL_GUIDE.md; sourceTree = "<group>"; };
+		31A94F9B2F58C5D20013F1AF /* BLACK_BACKGROUND_FEATURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = BLACK_BACKGROUND_FEATURE.md; sourceTree = "<group>"; };
+		31A94F9C2F58C5EF0013F1AF /* BLACK_BACKGROUND_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = BLACK_BACKGROUND_SUMMARY.md; sourceTree = "<group>"; };
+		31A94F9D2F58C6D00013F1AF /* PAGE_CENTERING_FEATURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PAGE_CENTERING_FEATURE.md; sourceTree = "<group>"; };
+		31A94F9E2F58C6EC0013F1AF /* PAGE_CENTERING_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PAGE_CENTERING_SUMMARY.md; sourceTree = "<group>"; };
 		A20000000000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -95,6 +103,14 @@
 				A70000000000000000000002 /* ReactNotes */,
 				A70000000000000000000003 /* ReactNotesTests */,
 				A70000000000000000000004 /* Products */,
+				31A94F972F58C2A90013F1AF /* ZOOM_ISSUE_FIX.md */,
+				31A94F982F58C41A0013F1AF /* PROPER_ZOOM_IMPLEMENTATION.md */,
+				31A94F992F58C4410013F1AF /* ZOOM_FIX_SUMMARY.md */,
+				31A94F9A2F58C4760013F1AF /* ZOOM_VISUAL_GUIDE.md */,
+				31A94F9B2F58C5D20013F1AF /* BLACK_BACKGROUND_FEATURE.md */,
+				31A94F9C2F58C5EF0013F1AF /* BLACK_BACKGROUND_SUMMARY.md */,
+				31A94F9D2F58C6D00013F1AF /* PAGE_CENTERING_FEATURE.md */,
+				31A94F9E2F58C6EC0013F1AF /* PAGE_CENTERING_SUMMARY.md */,
 			);
 			sourceTree = "<group>";
 		};
