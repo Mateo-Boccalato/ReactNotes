@@ -9,6 +9,29 @@ enum EditorMode {
     case text
 }
 
+// MARK: - DrawingProtectionGestureRecognizer
+
+/// A custom gesture recognizer that doesn't actually recognize gestures,
+/// but uses its delegate methods to block touches from reaching other gestures
+final class DrawingProtectionGestureRecognizer: UIGestureRecognizer {
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        // Always fail immediately - we're just here to filter via delegate
+        state = .failed
+    }
+    
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        state = .failed
+    }
+    
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        state = .failed
+    }
+    
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        state = .failed
+    }
+}
+
 // MARK: - NoteEditorViewController
 
 final class NoteEditorViewController: UIViewController {
@@ -40,6 +63,7 @@ final class NoteEditorViewController: UIViewController {
     private var numberOfPages: Int = 1
     private var pageSeparatorViews: [UIView] = []
     private var photoImageViews: [DraggableImageView] = []  // Track added photos
+    private var isZooming: Bool = false  // Track if we're currently zooming
 
     // Debounce
     private var canvasSaveWorkItem: DispatchWorkItem?
@@ -176,6 +200,9 @@ final class NoteEditorViewController: UIViewController {
         scrollView.showsHorizontalScrollIndicator = true
         scrollView.showsVerticalScrollIndicator = true
         scrollView.backgroundColor = .black  // Black background to show page boundaries
+        
+        // IMPORTANT: Delay touch handling to allow PKCanvasView to process touches first
+        scrollView.delaysContentTouches = false
         
         view.addSubview(scrollView)
         NSLayoutConstraint.activate([
@@ -385,6 +412,51 @@ final class NoteEditorViewController: UIViewController {
         let doubleTap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
         doubleTap.numberOfTapsRequired = 2
         scrollView.addGestureRecognizer(doubleTap)
+        
+        // Configure gesture priorities to prevent zoom from interfering with drawing
+        configureGesturePriorities()
+    }
+    
+    private func configureGesturePriorities() {
+        // Get the scroll view's pinch gesture recognizer
+        guard let scrollViewGestures = scrollView.gestureRecognizers else { return }
+        
+        // Find all canvas gestures (these are internal to PKCanvasView)
+        guard let canvasGestures = canvasView.gestureRecognizers else { return }
+        
+        // Make scroll view gestures wait for canvas gestures to fail
+        // This ensures drawing gets priority over zooming
+        for scrollGesture in scrollViewGestures {
+            // Only affect pinch gesture (zoom) - we still want panning to work
+            if scrollGesture is UIPinchGestureRecognizer {
+                for canvasGesture in canvasGestures {
+                    // The scroll view's pinch should only activate if the canvas doesn't handle the touch
+                    scrollGesture.require(toFail: canvasGesture)
+                }
+                
+                // NOTE: We cannot set a custom delegate on UIScrollView's built-in pinch gesture
+                // because UIScrollView requires its own gestures to have the scroll view as delegate.
+                // Instead, we'll use a custom gesture recognizer that we can control.
+                
+                print("🎯 Configured pinch gesture to wait for canvas gestures")
+            }
+        }
+        
+        // Add a custom gesture recognizer that can intercept touches before the pinch gesture
+        addDrawingProtectionGesture()
+    }
+    
+    private func addDrawingProtectionGesture() {
+        // Add a custom gesture recognizer that blocks touches from reaching zoom
+        // when we're in drawing mode with single touches
+        let protectionGesture = DrawingProtectionGestureRecognizer(target: self, action: nil)
+        protectionGesture.delegate = self
+        protectionGesture.cancelsTouchesInView = false
+        protectionGesture.delaysTouchesBegan = false
+        protectionGesture.delaysTouchesEnded = false
+        scrollView.addGestureRecognizer(protectionGesture)
+        
+        print("🛡️ Added drawing protection gesture")
     }
     
     @objc private func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
@@ -456,6 +528,13 @@ final class NoteEditorViewController: UIViewController {
         // Ensure textView doesn't block touches
         textView.isUserInteractionEnabled = false
         
+        // Configure gesture priorities after canvas is fully set up
+        // We need to do this after the drawing is loaded because PKCanvasView
+        // might recreate its gesture recognizers
+        DispatchQueue.main.async { [weak self] in
+            self?.configureGesturePriorities()
+        }
+        
         // Debug: print current state
         print("🎨 Drawing setup complete:")
         print("  - Canvas tool: \(canvasView.tool)")
@@ -488,6 +567,7 @@ final class NoteEditorViewController: UIViewController {
     // MARK: - Mode switching
 
     private func setMode(_ newMode: EditorMode) {
+        let previousMode = mode
         mode = newMode
         switch newMode {
         case .drawing:
@@ -498,6 +578,14 @@ final class NoteEditorViewController: UIViewController {
             canvasView.drawingPolicy = .pencilOnly
             textView.isUserInteractionEnabled = true
             textView.becomeFirstResponder()
+        }
+        
+        // If we switched to drawing mode, reconfigure gestures
+        if previousMode != .drawing && newMode == .drawing {
+            // Give canvas a moment to update its state
+            DispatchQueue.main.async { [weak self] in
+                self?.configureGesturePriorities()
+            }
         }
     }
 
@@ -609,9 +697,9 @@ final class NoteEditorViewController: UIViewController {
     }
 }
 
-// MARK: - PKCanvasViewDelegate
+// MARK: - PKCanvasViewDelegate & UIScrollViewDelegate
 
-extension NoteEditorViewController: PKCanvasViewDelegate {
+extension NoteEditorViewController: PKCanvasViewDelegate, UIScrollViewDelegate {
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
         // Expand content immediately (cheap)
         expandContentIfNeeded(canvasView)
@@ -650,8 +738,18 @@ extension NoteEditorViewController: PKCanvasViewDelegate {
     }
     
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        // Don't check for page expansion while zooming
+        // Zoom changes scroll position but shouldn't trigger page adds
+        guard !isZooming else { return }
+        
         // Check if we need to add more pages as user scrolls
         checkAndExpandPages()
+    }
+    
+    func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
+        // Mark that we're starting to zoom
+        isZooming = true
+        print("🔍 Zoom began")
     }
     
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
@@ -661,8 +759,9 @@ extension NoteEditorViewController: PKCanvasViewDelegate {
     }
     
     func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
-        // Called when zoom completes
-        print("🔍 Final zoom scale: \(scale)")
+        // Mark that zooming is complete
+        isZooming = false
+        print("🔍 Zoom ended at scale: \(scale)")
     }
     
     private func centerContentInScrollView() {
@@ -696,6 +795,10 @@ extension NoteEditorViewController: PKCanvasViewDelegate {
     
     // Check if user is near bottom and add new page if needed
     private func checkAndExpandPages() {
+        // Additional safety check - don't expand during zoom
+        // (Should already be blocked by scrollViewDidScroll guard, but be defensive)
+        guard !isZooming else { return }
+        
         let scrollOffset = scrollView.contentOffset.y
         let scrollViewHeight = scrollView.bounds.height
         let contentHeight = contentViewHeightConstraint.constant
@@ -935,6 +1038,99 @@ extension DraggableImageView: UIGestureRecognizerDelegate {
            (gestureRecognizer == rotationGesture && otherGestureRecognizer == pinchGesture) {
             return true
         }
+        return false
+    }
+}
+
+// MARK: - UIGestureRecognizerDelegate (Scroll View)
+extension NoteEditorViewController: UIGestureRecognizerDelegate {
+    
+    /// Determines whether a gesture recognizer should begin
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Only handle our custom protection gesture
+        // We cannot interfere with UIScrollView's built-in gestures via shouldBegin
+        return true
+    }
+    
+    /// Determines whether two gesture recognizers can recognize simultaneously
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        // Allow our protection gesture to run with everything (it always fails anyway)
+        if gestureRecognizer is DrawingProtectionGestureRecognizer ||
+           otherGestureRecognizer is DrawingProtectionGestureRecognizer {
+            return true
+        }
+        
+        return false
+    }
+    
+    /// Determines if gesture should receive a touch - THIS IS THE KEY METHOD
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Only filter for our custom protection gesture
+        if gestureRecognizer is DrawingProtectionGestureRecognizer {
+            // This method's return value doesn't matter for our protection gesture
+            // (it always fails), but we use it to block the scroll view's pinch gesture
+            return true
+        }
+        
+        // For scroll view's built-in gestures, we need to check if we should allow them
+        if gestureRecognizer.view == scrollView {
+            
+            // Check if this is a pinch gesture (zoom)
+            if gestureRecognizer is UIPinchGestureRecognizer {
+                
+                // Check if the touch is from Apple Pencil
+                if touch.type == .pencil {
+                    // Always block zoom for Apple Pencil touches - these are for drawing
+                    print("✏️ Blocking zoom for Apple Pencil touch")
+                    return false
+                }
+                
+                // If we're in drawing mode with finger drawing enabled
+                if mode == .drawing && canvasView.drawingPolicy == .anyInput {
+                    // Check if touch is on the canvas area
+                    let touchLocation = touch.location(in: canvasView)
+                    if canvasView.bounds.contains(touchLocation) {
+                        // This might be a drawing touch, be conservative
+                        // Only allow if there's already another touch (two-finger zoom)
+                        
+                        // Count how many touches are currently active on the scroll view
+                        // We need to check all gesture recognizers to count active touches
+                        var touchCount = 0
+                        if let gestures = scrollView.gestureRecognizers {
+                            for gesture in gestures {
+                                touchCount = max(touchCount, gesture.numberOfTouches)
+                            }
+                        }
+                        
+                        // If this is the first touch, block zoom (likely drawing)
+                        if touchCount < 2 {
+                            print("🖐️ Blocking zoom for single finger touch on canvas")
+                            return false
+                        }
+                    }
+                }
+            }
+        }
+        
+        return true
+    }
+    
+    /// Alternative approach: Check if we should require failure
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRequireFailureOf otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        // Make scroll view's pinch gesture wait for canvas gestures
+        if gestureRecognizer.view == scrollView,
+           gestureRecognizer is UIPinchGestureRecognizer,
+           otherGestureRecognizer.view == canvasView {
+            print("🎯 Pinch gesture should wait for canvas gesture to fail")
+            return true
+        }
+        
         return false
     }
 }

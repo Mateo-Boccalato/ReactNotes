@@ -59,6 +59,15 @@
 		31A94F9C2F58C5EF0013F1AF /* BLACK_BACKGROUND_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = BLACK_BACKGROUND_SUMMARY.md; sourceTree = "<group>"; };
 		31A94F9D2F58C6D00013F1AF /* PAGE_CENTERING_FEATURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PAGE_CENTERING_FEATURE.md; sourceTree = "<group>"; };
 		31A94F9E2F58C6EC0013F1AF /* PAGE_CENTERING_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PAGE_CENTERING_SUMMARY.md; sourceTree = "<group>"; };
+		31A94F9F2F58C7FB0013F1AF /* ZoomAndDrawingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomAndDrawingTests.swift; sourceTree = "<group>"; };
+		31A94FA02F58C87A0013F1AF /* ZOOM_DRAWING_FIX_TESTING.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ZOOM_DRAWING_FIX_TESTING.md; sourceTree = "<group>"; };
+		31A94FA12F58C8AA0013F1AF /* GESTURE_ARCHITECTURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = GESTURE_ARCHITECTURE.md; sourceTree = "<group>"; };
+		31A94FA22F58C8D60013F1AF /* ZOOM_DRAWING_FIX_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ZOOM_DRAWING_FIX_SUMMARY.md; sourceTree = "<group>"; };
+		31A94FA32F58C8FB0013F1AF /* QUICK_START_TESTING.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = QUICK_START_TESTING.md; sourceTree = "<group>"; };
+		31A94FA42F58C92F0013F1AF /* VISUAL_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = VISUAL_GUIDE.md; sourceTree = "<group>"; };
+		31A94FA52F58CA130013F1AF /* SCROLLVIEW_DELEGATE_FIX.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = SCROLLVIEW_DELEGATE_FIX.md; sourceTree = "<group>"; };
+		31A94FA62F58CBD50013F1AF /* FIX_COMPLETE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = FIX_COMPLETE.md; sourceTree = "<group>"; };
+		31A94FA72F58CCB80013F1AF /* ZOOM_PAGE_EXPANSION_FIX.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ZOOM_PAGE_EXPANSION_FIX.md; sourceTree = "<group>"; };
 		A20000000000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -111,6 +120,15 @@
 				31A94F9C2F58C5EF0013F1AF /* BLACK_BACKGROUND_SUMMARY.md */,
 				31A94F9D2F58C6D00013F1AF /* PAGE_CENTERING_FEATURE.md */,
 				31A94F9E2F58C6EC0013F1AF /* PAGE_CENTERING_SUMMARY.md */,
+				31A94F9F2F58C7FB0013F1AF /* ZoomAndDrawingTests.swift */,
+				31A94FA02F58C87A0013F1AF /* ZOOM_DRAWING_FIX_TESTING.md */,
+				31A94FA12F58C8AA0013F1AF /* GESTURE_ARCHITECTURE.md */,
+				31A94FA22F58C8D60013F1AF /* ZOOM_DRAWING_FIX_SUMMARY.md */,
+				31A94FA32F58C8FB0013F1AF /* QUICK_START_TESTING.md */,
+				31A94FA42F58C92F0013F1AF /* VISUAL_GUIDE.md */,
+				31A94FA52F58CA130013F1AF /* SCROLLVIEW_DELEGATE_FIX.md */,
+				31A94FA62F58CBD50013F1AF /* FIX_COMPLETE.md */,
+				31A94FA72F58CCB80013F1AF /* ZOOM_PAGE_EXPANSION_FIX.md */,
 			);
 			sourceTree = "<group>";
 		};
